@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 import streamlit as st
 from typing import Optional
@@ -6,9 +7,12 @@ from typing import Optional
 # =============================
 # CONFIG
 # =============================
-API_BASE = os.getenv("API_BASE",  "https://movies-recommendation-1-dmiy.onrender.com"or "http://127.0.0.1:8000")
+API_BASE = os.getenv("API_BASE", "https://movies-recommendation-1-dmiy.onrender.com")
 TMDB_IMG = "https://image.tmdb.org/t/p/w500"
 
+# =============================
+# PAGE CONFIG (must be first st command)
+# =============================
 st.set_page_config(page_title="Movie Recommender", page_icon="🎬", layout="wide")
 
 # =============================
@@ -22,6 +26,23 @@ st.markdown("""
 .card { border: 1px solid rgba(0,0,0,0.08); border-radius: 16px; padding: 14px; background: rgba(255,255,255,0.7); }
 </style>
 """, unsafe_allow_html=True)
+
+# =============================
+# WAKE UP BACKEND (after st is ready)
+# =============================
+def ping_backend():
+    try:
+        r = requests.get(f"{API_BASE}/health", timeout=60)
+        return r.status_code == 200
+    except:
+        return False
+
+if "backend_awake" not in st.session_state:
+    with st.spinner("⏳ Waking up server... please wait 30-60 seconds..."):
+        awake = ping_backend()
+        st.session_state.backend_awake = awake
+    if not awake:
+        st.warning("⚠️ Backend is slow. Please refresh in 30 seconds.")
 
 # =============================
 # STATE + ROUTING
@@ -64,13 +85,19 @@ def goto_details(tmdb_id: int):
 # =============================
 @st.cache_data(ttl=60)
 def api_get_json(path: str, params: Optional[dict] = None):
-    try:
-        r = requests.get(f"{API_BASE}{path}", params=params, timeout=25)
-        if r.status_code >= 400:
-            return None, f"HTTP {r.status_code}: {r.text[:300]}"
-        return r.json(), None
-    except Exception as e:
-        return None, f"Request failed: {e}"
+    for attempt in range(3):
+        try:
+            r = requests.get(f"{API_BASE}{path}", params=params, timeout=60)
+            if r.status_code >= 400:
+                return None, f"HTTP {r.status_code}: {r.text[:300]}"
+            return r.json(), None
+        except requests.exceptions.Timeout:
+            if attempt < 2:
+                time.sleep(3)
+                continue
+            return None, "⏳ Server is waking up... please refresh in 30 seconds"
+        except Exception as e:
+            return None, f"Request failed: {e}"
 
 
 def poster_grid(cards, cols=6, key_prefix="grid"):
@@ -87,21 +114,17 @@ def poster_grid(cards, cols=6, key_prefix="grid"):
                 break
             m = cards[idx]
             idx += 1
-
             tmdb_id = m.get("tmdb_id")
             title = m.get("title", "Untitled")
             poster = m.get("poster_url")
-
             with colset[c]:
                 if poster:
-                    st.image(poster, use_container_width=True)  # ✅ fixed
+                    st.image(poster, use_container_width=True)
                 else:
                     st.write("🖼️ No poster")
-
                 if st.button("Open", key=f"{key_prefix}_{r}_{c}_{idx}_{tmdb_id}"):
                     if tmdb_id:
                         goto_details(tmdb_id)
-
                 st.markdown(
                     f"<div class='movie-title'>{title}</div>",
                     unsafe_allow_html=True
@@ -144,13 +167,12 @@ def parse_tmdb_search_to_cards(data, keyword: str, limit: int = 24):
         for m in data:
             tmdb_id = m.get("tmdb_id") or m.get("id")
             title = (m.get("title") or "").strip()
-            poster_url = m.get("poster_url")
             if not title or not tmdb_id:
                 continue
             raw_items.append({
                 "tmdb_id": int(tmdb_id),
                 "title": title,
-                "poster_url": poster_url,
+                "poster_url": m.get("poster_url"),
                 "release_date": m.get("release_date", ""),
             })
     else:
@@ -179,7 +201,6 @@ with st.sidebar:
     st.markdown("## 🎬 Menu")
     if st.button("🏠 Home"):
         goto_home()
-
     st.markdown("---")
     st.markdown("### 🏠 Home Feed")
     home_category = st.selectbox(
@@ -217,7 +238,6 @@ if st.session_state.view == "home":
                 st.error(f"Search failed: {err}")
             else:
                 suggestions, cards = parse_tmdb_search_to_cards(data, typed.strip(), limit=24)
-
                 if suggestions:
                     labels = ["-- Select a movie --"] + [s[0] for s in suggestions]
                     selected = st.selectbox("Suggestions", labels, index=0)
@@ -226,7 +246,6 @@ if st.session_state.view == "home":
                         goto_details(label_to_id[selected])
                 else:
                     st.info("No suggestions found.")
-
                 st.markdown("### Results")
                 poster_grid(cards, cols=grid_cols, key_prefix="search_results")
         st.stop()
@@ -264,10 +283,9 @@ elif st.session_state.view == "details":
     left, right = st.columns([1, 2.4], gap="large")
     with left:
         if data.get("poster_url"):
-            st.image(data["poster_url"], use_container_width=True)  # ✅ fixed
+            st.image(data["poster_url"], use_container_width=True)
         else:
             st.write("🖼️ No poster")
-
     with right:
         st.markdown(f"## {data.get('title', '')}")
         release = data.get("release_date") or "-"
@@ -279,7 +297,7 @@ elif st.session_state.view == "details":
         st.write(data.get("overview") or "No overview available.")
 
     if data.get("backdrop_url"):
-        st.image(data["backdrop_url"], use_container_width=True)  # ✅ fixed
+        st.image(data["backdrop_url"], use_container_width=True)
 
     st.divider()
     st.markdown("### ✅ Recommendations")
