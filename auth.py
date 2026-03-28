@@ -1,79 +1,87 @@
-import sqlite3
 import bcrypt
 import os
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "users.db")
+# =============================
+# SUPABASE SETUP
+# =============================
+try:
+    from supabase import create_client
+    import streamlit as st
 
-# =============================
-# DATABASE SETUP
-# =============================
-def init_db():
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    conn.commit()
-    conn.close()
+    # Pehle Streamlit secrets try karo
+    try:
+        SUPABASE_URL = st.secrets["SUPABASE_URL"]
+        SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+    except:
+        # Phir environment variable try karo
+        SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+        SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    SUPABASE_OK = True
+
+except Exception as e:
+    SUPABASE_OK = False
+    print(f"Supabase connection failed: {e}")
+
 
 # =============================
 # REGISTER USER
 # =============================
 def register_user(username: str, email: str, password: str):
+    if not SUPABASE_OK:
+        return False, "Database not connected!"
     try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-
-        # Password hash karo
         hashed = bcrypt.hashpw(
             password.encode("utf-8"),
             bcrypt.gensalt()
-        )
+        ).decode("utf-8")
 
-        c.execute(
-            "INSERT INTO users (username, email, password) VALUES (?, ?, ?)",
-            (username, email, hashed.decode("utf-8"))
-        )
-        conn.commit()
-        conn.close()
+        supabase.table("users").insert({
+            "username": username,
+            "email": email,
+            "password": hashed
+        }).execute()
+
         return True, "Registration successful!"
 
-    except sqlite3.IntegrityError:
-        return False, "Username or Email already exists!"
     except Exception as e:
+        if "duplicate" in str(e).lower():
+            return False, "Username or Email already exists!"
         return False, f"Error: {e}"
+
 
 # =============================
 # LOGIN USER
 # =============================
 def login_user(email: str, password: str):
+    if not SUPABASE_OK:
+        return False, "Database not connected!"
     try:
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
+        result = supabase.table("users")\
+            .select("username, password")\
+            .eq("email", email)\
+            .execute()
 
-        c.execute(
-            "SELECT username, password FROM users WHERE email = ?",
-            (email,)
-        )
-        row = c.fetchone()
-        conn.close()
-
-        if not row:
+        if not result.data:
             return False, "Email not found!"
 
-        username, hashed = row
+        user = result.data[0]
 
-        # Password verify karo
-        if bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8")):
-            return True, username
+        if bcrypt.checkpw(
+            password.encode("utf-8"),
+            user["password"].encode("utf-8")
+        ):
+            return True, user["username"]
         else:
             return False, "Wrong password!"
 
     except Exception as e:
         return False, f"Error: {e}"
+
+
+# =============================
+# DUMMY init_db
+# =============================
+def init_db():
+    pass
