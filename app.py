@@ -1,3 +1,11 @@
+from auth import init_db, login_user, register_user
+
+# Database initialize karo
+init_db()
+
+
+
+
 import os
 import time
 import requests
@@ -13,6 +21,97 @@ API_BASE = "https://movie-rec-466x.onrender.com" or "http://127.0.0.1:8000"
 TMDB_IMG = "https://image.tmdb.org/t/p/w500"
 
 st.set_page_config(page_title="Movie Recommender", page_icon="🎬", layout="wide")
+
+
+# =============================
+# LOGIN / REGISTER PAGE
+# =============================
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "username" not in st.session_state:
+    st.session_state.username = ""
+
+def show_login_page():
+    st.markdown("""
+    <div style='text-align:center; padding: 40px 0 10px 0;'>
+        <h1>🎬 Movie Recommender</h1>
+        <p style='color:#6b7280;'>Login to get personalized recommendations</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 1.5, 1])
+    with col2:
+        tab1, tab2 = st.tabs(["🔑 Login", "📝 Register"])
+
+        # ── LOGIN TAB ──
+        with tab1:
+            st.markdown("### Welcome Back!")
+            email = st.text_input(
+                "Email", placeholder="enter your email", key="login_email"
+            )
+            password = st.text_input(
+                "Password", type="password",
+                placeholder="enter your password", key="login_pass"
+            )
+
+            if st.button("Login", use_container_width=True, type="primary"):
+                if not email or not password:
+                    st.error("Please fill all fields!")
+                else:
+                    success, result = login_user(email, password)
+                    if success:
+                        st.session_state.logged_in = True
+                        st.session_state.username = result
+                        st.success(f"Welcome back {result}! 🎉")
+                        st.rerun()
+                    else:
+                        st.error(result)
+
+        # ── REGISTER TAB ──
+        with tab2:
+            st.markdown("### Create Account")
+            new_username = st.text_input(
+                "Username", placeholder="enter username", key="reg_user"
+            )
+            new_email = st.text_input(
+                "Email", placeholder="enter email", key="reg_email"
+            )
+            new_password = st.text_input(
+                "Password", type="password",
+                placeholder="min 6 characters", key="reg_pass"
+            )
+            confirm_password = st.text_input(
+                "Confirm Password", type="password",
+                placeholder="repeat password", key="reg_confirm"
+            )
+
+            if st.button("Register", use_container_width=True, type="primary"):
+                if not all([new_username, new_email, new_password, confirm_password]):
+                    st.error("Please fill all fields!")
+                elif len(new_password) < 6:
+                    st.error("Password must be at least 6 characters!")
+                elif new_password != confirm_password:
+                    st.error("Passwords do not match!")
+                else:
+                    success, msg = register_user(new_username, new_email, new_password)
+                    if success:
+                        st.success("Account created! Please login. ✅")
+                    else:
+                        st.error(msg)
+
+# =============================
+# ROUTING — Login check
+# =============================
+if not st.session_state.logged_in:
+    show_login_page()
+    st.stop()  # ← Movie part nahi dikhega jab tak login nahi
+
+
+
+
+
+
+
 
 # =============================
 # STYLES (minimal modern)
@@ -230,6 +329,22 @@ def parse_tmdb_search_to_cards(data, keyword: str, limit: int = 24):
         for x in final_list[:limit]
     ]
     return suggestions, cards
+
+
+with st.sidebar:
+    st.markdown("## 🎬 Menu")
+
+    # ── Logout Button ──
+    st.markdown(f"👤 **{st.session_state.username}**")
+    if st.button("🚪 Logout"):
+        st.session_state.logged_in = False
+        st.session_state.username = ""
+        st.rerun()
+
+    st.markdown("---")
+    # ... baaki sidebar code same rahega
+
+
 
 
 # =============================
