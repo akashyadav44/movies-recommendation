@@ -4,3 +4,4 @@ fastapi
 uvicorn
 bcrypt
 supabase
+python-dotenv
