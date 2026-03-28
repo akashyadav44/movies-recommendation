@@ -1,9 +1,5 @@
 import bcrypt
 import os
-from dotenv import load_dotenv
-
-# .env file load karo
-load_dotenv()
 
 # =============================
 # SUPABASE SETUP
@@ -11,13 +7,18 @@ load_dotenv()
 try:
     from supabase import create_client
 
-    # Pehle streamlit secrets try karo
+    # Streamlit Cloud pe secrets se lo
     try:
         import streamlit as st
         SUPABASE_URL = st.secrets["SUPABASE_URL"]
         SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
     except:
-        # Local ke liye .env use karo
+        # Local ke liye .env se lo
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+        except:
+            pass
         SUPABASE_URL = os.getenv("SUPABASE_URL", "")
         SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 
@@ -45,7 +46,7 @@ def register_user(username: str, email: str, password: str):
             bcrypt.gensalt()
         ).decode("utf-8")
 
-        result = supabase.table("users").insert({
+        supabase.table("users").insert({
             "username": username,
             "email": email,
             "password": hashed
@@ -88,4 +89,8 @@ def login_user(email: str, password: str):
         return False, f"Error: {e}"
 
 
- 
+# =============================
+# DUMMY init_db
+# =============================
+def init_db():
+    pass
