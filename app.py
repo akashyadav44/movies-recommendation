@@ -1,7 +1,7 @@
-from auth import init_db, login_user, register_user
+from auth import login_user, register_user
 
 # Database initialize karo
-init_db()
+
 
 
 

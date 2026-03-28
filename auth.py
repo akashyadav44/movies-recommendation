@@ -1,24 +1,32 @@
 import bcrypt
 import os
+from dotenv import load_dotenv
+
+# .env file load karo
+load_dotenv()
 
 # =============================
 # SUPABASE SETUP
 # =============================
 try:
     from supabase import create_client
-    import streamlit as st
 
-    # Pehle Streamlit secrets try karo
+    # Pehle streamlit secrets try karo
     try:
+        import streamlit as st
         SUPABASE_URL = st.secrets["SUPABASE_URL"]
         SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
     except:
-        # Phir environment variable try karo
+        # Local ke liye .env use karo
         SUPABASE_URL = os.getenv("SUPABASE_URL", "")
         SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise Exception("Keys not found!")
+
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     SUPABASE_OK = True
+    print("Supabase connected!")
 
 except Exception as e:
     SUPABASE_OK = False
@@ -37,7 +45,7 @@ def register_user(username: str, email: str, password: str):
             bcrypt.gensalt()
         ).decode("utf-8")
 
-        supabase.table("users").insert({
+        result = supabase.table("users").insert({
             "username": username,
             "email": email,
             "password": hashed
@@ -80,8 +88,4 @@ def login_user(email: str, password: str):
         return False, f"Error: {e}"
 
 
-# =============================
-# DUMMY init_db
-# =============================
-def init_db():
-    pass
+ 
