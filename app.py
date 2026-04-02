@@ -1,3 +1,4 @@
+from chatbot import render_chatbot_sidebar
 from auth import login_user, register_user
 
 import os
