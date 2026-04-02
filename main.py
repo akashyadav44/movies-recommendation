@@ -1,5 +1,5 @@
 from auth import login_user, register_user
-from chatbot import render_chatbot_sidebar   # ← NEW
+from chatbot import render_chatbot_sidebar
 
 import os
 import time
@@ -158,7 +158,7 @@ def api_get_json(path: str, params: Optional[dict] = None):
 
 
 # =============================
-# POSTER GRID — WITH RATING + SIMILARITY
+# POSTER GRID
 # =============================
 def poster_grid(cards, cols=6, key_prefix="grid"):
     if not cards:
@@ -310,7 +310,7 @@ def parse_tmdb_search_to_cards(data, keyword: str, limit: int = 24):
 
 
 # =============================
-# SIDEBAR
+# SIDEBAR + CHATBOT
 # =============================
 with st.sidebar:
     st.markdown("## 🎬 Menu")
@@ -330,7 +330,6 @@ with st.sidebar:
         index=0,
     )
     grid_cols = st.slider("Grid columns", 4, 8, 6)
-
     st.markdown("---")
     st.markdown("### 📊 Similarity Guide")
     st.markdown("🟢 **▮▮▮ 70%+** — High match")
@@ -338,10 +337,10 @@ with st.sidebar:
     st.markdown("🔵 **▮░░ <40%** — Low match")
     st.markdown("⭐ **Rating** — TMDB public score")
 
-# ← AI Chatbot — sidebar mein render karo, current movie context ke saath
-render_chatbot_sidebar(
-    current_movie=st.session_state.get("current_movie_title")
-)
+    # Chatbot — sidebar block ke ANDAR
+    render_chatbot_sidebar(
+        current_movie=st.session_state.get("current_movie_title")
+    )
 
 # =============================
 # HEADER
@@ -417,7 +416,6 @@ elif st.session_state.view == "details":
         st.error(f"Could not load details: {err or 'Unknown error'}")
         st.stop()
 
-    # Chatbot ko current movie ka context do
     st.session_state.current_movie_title = data.get("title", "")
 
     left, right = st.columns([1, 2.4], gap="large")
