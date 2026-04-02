@@ -1,13 +1,25 @@
 import os
-import anthropic
 import streamlit as st
 
-# Streamlit Cloud secrets ya local env variable dono se kaam karega
-_api_key = st.secrets.get("ANTHROPIC_API_KEY") if hasattr(st, "secrets") else None
-if not _api_key:
-    _api_key = os.getenv("ANTHROPIC_API_KEY")
 
-client = anthropic.Anthropic(api_key=_api_key)
+def _get_key(name):
+    key = os.getenv(name)
+    if key:
+        return key
+    try:
+        return st.secrets[name]
+    except Exception:
+        return None
+
+
+GROQ_API_KEY = _get_key("GROQ_API_KEY")
+
+if GROQ_API_KEY:
+    from groq import Groq
+    _client = Groq(api_key=GROQ_API_KEY)
+    PROVIDER = "groq"
+else:
+    PROVIDER = None
 
 SYSTEM_PROMPT = """You are a helpful movie expert chatbot. You help users with:
 - Movie recommendations based on their mood, genre, actors they like
@@ -15,28 +27,28 @@ SYSTEM_PROMPT = """You are a helpful movie expert chatbot. You help users with:
 - Comparing movies and explaining why one might be better than another
 - Explaining why certain movies are recommended based on content similarity
 
-Keep answers short and friendly. If asked about a specific movie that is currently
-being viewed by the user, use that context to give better answers.
-Always respond in the same language the user writes in (Hindi/English/Hinglish)."""
+Keep answers short and friendly.
+Always respond in English only, regardless of what language the user writes in.)."""
 
 
 def get_chatbot_response(messages: list, current_movie: str = None) -> str:
-    system = SYSTEM_PROMPT
-    if current_movie:
-        system += f"\n\nThe user is currently viewing: '{current_movie}'. Use this as context when relevant."
+    if not PROVIDER:
+        return "GROQ_API_KEY set nahi hai."
 
     try:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+        system = SYSTEM_PROMPT
+        if current_movie:
+            system += f"\n\nUser is currently viewing: '{current_movie}'. Use this as context."
+
+        all_messages = [{"role": "system", "content": system}] + messages
+
+        response = _client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=all_messages,
             max_tokens=1000,
-            system=system,
-            messages=messages,
         )
-        return response.content[0].text
-    except anthropic.AuthenticationError:
-        return "API key sahi nahi hai. Streamlit Secrets mein ANTHROPIC_API_KEY check karo."
-    except anthropic.RateLimitError:
-        return "Bahut zyada requests ho gayi. Thodi der baad try karo."
+        return response.choices[0].message.content
+
     except Exception as e:
         return f"Error: {str(e)}"
 
@@ -45,10 +57,16 @@ def render_chatbot_sidebar(current_movie: str = None):
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🤖 Movie Chatbot")
 
+    if not PROVIDER:
+        st.sidebar.error("GROQ_API_KEY set nahi hai.")
+        return
+
+    st.sidebar.caption("Powered by Groq — Llama 3 (Free)")
+
     if current_movie:
-        st.sidebar.caption(f"Context: {current_movie}")
+        st.sidebar.info(f"Context: {current_movie}")
     else:
-        st.sidebar.caption("Koi bhi movie ke baare mein poochho!")
+        st.sidebar.caption("Ask me anything about movies!")
 
     if "chat_messages" not in st.session_state:
         st.session_state.chat_messages = []
@@ -57,7 +75,6 @@ def render_chatbot_sidebar(current_movie: str = None):
         st.session_state.chat_messages = []
         st.rerun()
 
-    # Last 6 messages dikhao
     for msg in st.session_state.chat_messages[-6:]:
         if msg["role"] == "user":
             st.sidebar.markdown(
@@ -75,8 +92,8 @@ def render_chatbot_sidebar(current_movie: str = None):
             )
 
     user_input = st.sidebar.text_input(
-        "Ask me anything...",
-        placeholder="e.g. Mujhe action movies suggest karo",
+        "Poochho kuch bhi...",
+        placeholder="e.g.= 'Ask Anything about movies!'",
         key="chatbot_input",
         label_visibility="collapsed"
     )
@@ -87,17 +104,14 @@ def render_chatbot_sidebar(current_movie: str = None):
                 "role": "user",
                 "content": user_input.strip()
             })
-
             with st.sidebar:
-                with st.spinner("Thinking..."):
+                with st.spinner("Soch raha hoon..."):
                     reply = get_chatbot_response(
                         messages=st.session_state.chat_messages,
                         current_movie=current_movie
                     )
-
             st.session_state.chat_messages.append({
                 "role": "assistant",
                 "content": reply
             })
-
             st.rerun()

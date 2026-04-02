@@ -5,3 +5,5 @@ uvicorn
 bcrypt
 supabase
 python-dotenv
+anthropic
+groq
