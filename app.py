@@ -105,6 +105,8 @@ if "view" not in st.session_state:
     st.session_state.view = "home"
 if "selected_tmdb_id" not in st.session_state:
     st.session_state.selected_tmdb_id = None
+if "current_movie_title" not in st.session_state:
+    st.session_state.current_movie_title = None
 
 qp_view = st.query_params.get("view")
 qp_id   = st.query_params.get("id")
@@ -120,6 +122,7 @@ if qp_id:
 
 def goto_home():
     st.session_state.view = "home"
+    st.session_state.current_movie_title = None
     st.query_params["view"] = "home"
     if "id" in st.query_params:
         del st.query_params["id"]
@@ -175,17 +178,15 @@ def poster_grid(cards, cols=6, key_prefix="grid"):
             tmdb_id = m.get("tmdb_id")
             title   = m.get("title", "Untitled")
             poster  = m.get("poster_url")
-            rating  = m.get("vote_average")        # TMDB rating /10
-            sim     = m.get("similarity_score")    # 0.0 to 1.0
+            rating  = m.get("vote_average")
+            sim     = m.get("similarity_score")
 
             with colset[c]:
-                # Poster image
                 if poster:
                     st.image(poster, use_container_width=True)
                 else:
                     st.write("🖼️ No poster")
 
-                # ⭐ TMDB Rating
                 if rating:
                     try:
                         r_val = float(rating)
@@ -195,7 +196,6 @@ def poster_grid(cards, cols=6, key_prefix="grid"):
                             f"{stars} <b>{r_val:.1f}</b>/10</div>",
                             unsafe_allow_html=True
                         )
-                        # Thin rating bar
                         bar_pct = int((r_val / 10) * 100)
                         st.markdown(
                             f"<div class='rating-bar-bg'>"
@@ -206,23 +206,15 @@ def poster_grid(cards, cols=6, key_prefix="grid"):
                     except:
                         pass
 
-                # 🔗 Similarity Score
                 if sim is not None:
                     try:
                         pct = round(float(sim) * 100)
                         if pct >= 70:
-                            css_class = "sim-label-high"
-                            icon = "▮▮▮"
-                            label = "High match"
+                            css_class, icon, label = "sim-label-high", "▮▮▮", "High match"
                         elif pct >= 40:
-                            css_class = "sim-label-mid"
-                            icon = "▮▮░"
-                            label = "Medium match"
+                            css_class, icon, label = "sim-label-mid",  "▮▮░", "Medium match"
                         else:
-                            css_class = "sim-label-low"
-                            icon = "▮░░"
-                            label = "Low match"
-
+                            css_class, icon, label = "sim-label-low",  "▮░░", "Low match"
                         st.markdown(
                             f"<div class='{css_class}'>{icon} {pct}% — {label}</div>",
                             unsafe_allow_html=True
@@ -230,12 +222,10 @@ def poster_grid(cards, cols=6, key_prefix="grid"):
                     except:
                         pass
 
-                # Open button
                 if st.button("Open", key=f"{key_prefix}_{r}_{c}_{idx}_{tmdb_id}"):
                     if tmdb_id:
                         goto_details(tmdb_id)
 
-                # Title
                 st.markdown(
                     f"<div class='movie-title'>{title}</div>",
                     unsafe_allow_html=True
@@ -243,7 +233,7 @@ def poster_grid(cards, cols=6, key_prefix="grid"):
 
 
 # =============================
-# TFIDF ITEMS → CARDS (rating + similarity included)
+# TFIDF ITEMS → CARDS
 # =============================
 def to_cards_from_tfidf_items(tfidf_items):
     cards = []
@@ -300,7 +290,7 @@ def parse_tmdb_search_to_cards(data, keyword: str, limit: int = 24):
     else:
         return [], []
 
-    matched   = [x for x in raw_items if keyword_l in x["title"].lower()]
+    matched    = [x for x in raw_items if keyword_l in x["title"].lower()]
     final_list = matched if matched else raw_items
 
     suggestions = []
@@ -320,7 +310,7 @@ def parse_tmdb_search_to_cards(data, keyword: str, limit: int = 24):
 
 
 # =============================
-# SIDEBAR
+# SIDEBAR + CHATBOT
 # =============================
 with st.sidebar:
     st.markdown("## 🎬 Menu")
@@ -340,14 +330,17 @@ with st.sidebar:
         index=0,
     )
     grid_cols = st.slider("Grid columns", 4, 8, 6)
-
-    # Legend for similarity
     st.markdown("---")
     st.markdown("### 📊 Similarity Guide")
     st.markdown("🟢 **▮▮▮ 70%+** — High match")
     st.markdown("🟡 **▮▮░ 40-70%** — Medium match")
     st.markdown("🔵 **▮░░ <40%** — Low match")
     st.markdown("⭐ **Rating** — TMDB public score")
+
+    # Chatbot — sidebar block ke ANDAR
+    render_chatbot_sidebar(
+        current_movie=st.session_state.get("current_movie_title")
+    )
 
 # =============================
 # HEADER
@@ -423,6 +416,9 @@ elif st.session_state.view == "details":
         st.error(f"Could not load details: {err or 'Unknown error'}")
         st.stop()
 
+    # Chatbot ko current movie ka context do
+    st.session_state.current_movie_title = data.get("title", "")
+
     left, right = st.columns([1, 2.4], gap="large")
 
     with left:
@@ -443,7 +439,6 @@ elif st.session_state.view == "details":
         st.markdown(f"<div class='small-muted'>Release: {release}</div>", unsafe_allow_html=True)
         st.markdown(f"<div class='small-muted'>Genres: {genres}</div>",   unsafe_allow_html=True)
 
-        # ⭐ Main movie rating
         if rating:
             try:
                 r_val = float(rating)
@@ -484,9 +479,7 @@ elif st.session_state.view == "details":
         )
 
         if not err2 and bundle:
-            # TF-IDF recommendations with similarity + rating
             tfidf_cards = to_cards_from_tfidf_items(bundle.get("tfidf_recommendations"))
-
             st.markdown("#### 🔎 Similar Movies (TF-IDF)")
             st.caption("Similarity % = kitna content match karta hai | ⭐ = TMDB public rating")
             poster_grid(tfidf_cards, cols=grid_cols, key_prefix="details_tfidf")
